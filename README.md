@@ -191,7 +191,7 @@ See [COMMANDS.md](COMMANDS.md) for the complete list of all ~45 cleanup commands
 ### 5 · Privacy Settings
 The core of the toolkit. Twelve granular categories of `defaults write` commands — all safe, all reversible, none require deletions. Run all at once or pick individual categories.
 
-<div align="center"><img src="assets/images/screenshot-privacy.png" alt="Privacy Settings submenu" width="500"></div>
+<div align="center"><img src="assets/images/screenshot-privacy.png" alt="Privacy Settings submenu" width="830"></div>
 
 | Category | What it does |
 |----------|-------------|
