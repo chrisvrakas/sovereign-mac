@@ -3,7 +3,7 @@
 > **A macOS Privacy & Security Toolkit**
 > *Don't trust Apple. Verify. YOUR machine. YOUR rules.*
 
-<div align="center"><img src="assets/images/sovereign-banner.png" alt="sovereign-mac" width="700"></div>
+<div align="center"><img src="assets/images/sovereign-banner.png" alt="sovereign-mac" width="100%"></div>
 
 <div align="center"><img src="assets/images/sovereign-hero.png" alt="sovereign-mac main menu" width="800"></div>
 
@@ -14,6 +14,16 @@ sovereign-mac is a menu-driven shell script that automates macOS privacy hardeni
 Built for people who want a private, hardened Mac but don't want to spend hours googling terminal commands.
 
 > Want to see every exact terminal command the script runs, organized by module? → **[COMMANDS.md](COMMANDS.md)**
+
+## Quick Links
+
+- [Quick Start](#quick-start)
+- [Features](#features)
+- [Philosophy](#philosophy)
+- [Recommended Tools](#-recommended-tools)
+- [Command Reference](COMMANDS.md) ← full list of every terminal command
+- [Credits](#-credits--inspiration)
+- [License](#-license)
 
 ---
 
@@ -181,7 +191,7 @@ See [COMMANDS.md](COMMANDS.md) for the complete list of all ~45 cleanup commands
 ### 5 · Privacy Settings
 The core of the toolkit. Twelve granular categories of `defaults write` commands — all safe, all reversible, none require deletions. Run all at once or pick individual categories.
 
-<div align="center"><img src="assets/images/screenshot-privacy.png" alt="Privacy Settings submenu" width="600"></div>
+<div align="center"><img src="assets/images/screenshot-privacy.png" alt="Privacy Settings submenu" width="500"></div>
 
 | Category | What it does |
 |----------|-------------|
