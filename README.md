@@ -3,9 +3,9 @@
 > **A macOS Privacy & Security Toolkit**
 > *Don't trust Apple. Verify. YOUR machine. YOUR rules.*
 
-<div align="center"><img src="assets/images/sovereign-banner.png" alt="sovereign-mac" width="830"></div>
+<div align="center"><img src="assets/images/sovereign-banner.png" alt="sovereign-mac" width="100%"></div>
 
-<div align="center"><img src="assets/images/sovereign-hero.png" alt="sovereign-mac main menu" width="830"></div>
+<div align="center"><img src="assets/images/sovereign-hero.png" alt="sovereign-mac main menu" width="100%"></div>
 
 ---
 
@@ -37,7 +37,7 @@ Turning it all off manually requires running dozens of individual terminal comma
 
 ## Quick Start
 
-<div align="center"><img src="assets/images/sovereign-demo.gif" alt="sovereign-mac demo - terminal menu navigation" width="848"></div>
+<div align="center"><img src="assets/images/sovereign-demo.gif" alt="sovereign-mac demo - terminal menu navigation" width="100%"></div>
 
 > **Don't know what Terminal is?** It's a built-in macOS app. Press `Command + Space`, type `Terminal`, and press Enter.
 
