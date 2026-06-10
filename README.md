@@ -37,6 +37,8 @@ Turning it all off manually requires running dozens of individual terminal comma
 
 ## Quick Start
 
+<div align="center"><img src="assets/images/sovereign-demo.gif" alt="sovereign-mac demo - terminal menu navigation" width="848"></div>
+
 > **Don't know what Terminal is?** It's a built-in macOS app. Press `Command + Space`, type `Terminal`, and press Enter.
 
 **Step 1** — Download `sovereign.sh` from this repo (click the file, then the download button)
