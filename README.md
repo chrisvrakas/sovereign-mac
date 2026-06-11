@@ -37,8 +37,6 @@ Turning it all off manually requires running dozens of individual terminal comma
 
 ## Quick Start
 
-<div align="center"><img src="assets/images/sovereign-demo.gif" alt="sovereign-mac demo - terminal menu navigation" width="100%"></div>
-
 > **Don't know what Terminal is?** It's a built-in macOS app. Press `Command + Space`, type `Terminal`, and press Enter.
 
 **Step 1** — Download `sovereign.sh` from this repo (click the file, then the download button)
@@ -81,6 +79,8 @@ That's it. You'll see a menu. Type a number and press Enter to select an option.
 
 ### 1 · New Machine Setup
 One-time hardening tasks for a fresh macOS installation. Run these in order on a new machine, or after a factory reset.
+
+<div align="center"><img src="assets/images/screenshot-newmachine.jpg" alt="New Machine Setup submenu" width="100%"></div>
 
 | Step | What it does |
 |------|-------------|
@@ -234,6 +234,8 @@ Privacy settings use `defaults write` — the standard macOS preference system. 
 ### 6 · Spoof MAC Address
 Changes your Wi-Fi adapter's hardware address — useful for privacy on public networks. Your real MAC address is restored on reboot (Apple Silicon limitation).
 
+<div align="center"><img src="assets/images/screenshot-spoofmacaddress.jpg" alt="Spoof MAC Address submenu" width="100%"></div
+
 - Randomize Wi-Fi MAC address
 - Randomize a specific network interface
 - Restore your original hardware MAC address
@@ -281,6 +283,8 @@ Read-only security audit. Nothing changes — it just checks and reports.
 ### 8 · Objective-See Security Scans
 Checks the status of Patrick Wardle's free security tools and runs them if installed.
 
+<div align="center"><img src="assets/images/screenshot-objectivesee.jpg" alt="Objective-See Security Scans submenu" width="100%"></div>
+
 | Tool | What it does |
 |------|-------------|
 | **LuLu** | Open-source outbound firewall — alerts when apps try to phone home |
@@ -297,6 +301,8 @@ If a tool isn't installed, the script offers to open the download page.
 ### 9 · Encrypted Container Wizard
 Creates and manages AES-256 encrypted disk images using macOS's built-in `hdiutil`. No third-party software required.
 
+<div align="center"><img src="assets/images/screenshot-encryptedcontainer.jpg" alt="Encrypted Container submenu" width="100%"></div
+                                                                                                                                   
 - Create a new encrypted container (specify name, size, and location)
 - Mount an existing container (prompts for password)
 - Unmount an open container
