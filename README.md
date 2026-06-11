@@ -1,4 +1,4 @@
-# SOVEREIGN-MAC
+# **SOVEREIGN-MAC**
 
 > **A macOS Privacy & Security Toolkit**
 > *Don't trust Apple. Verify. YOUR machine. YOUR rules.*
