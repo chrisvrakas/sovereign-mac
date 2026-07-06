@@ -483,6 +483,7 @@ sovereign-mac stands on the shoulders of people who have spent years documenting
 - **[herrbischoff / awesome-macos-command-line](https://github.com/herrbischoff/awesome-macos-command-line)** — curated macOS CLI reference
 - **[StevenBlack / hosts](https://github.com/StevenBlack/hosts)** — unified hosts file blocking ~150,000 tracker and ad domains
 - **[arkenfox / user.js](https://github.com/arkenfox/user.js)** — Firefox hardening reference
+- **[Naomi Brockwell](https://www.youtube.com/@NaomiBrockwellTV)** - Advancing freedom through technology
 - **[Sun Knudsen](https://sunknudsen.com)** — macOS privacy guides including cold boot attack protection
 - **[Rayo](https://ad-store.sgp1.digitaloceanspaces.com/VONU/2022/08/Vonu%20Book%201%20Paperback%20Official.pdf)** — the Vonu philosophy: *VOluntary Not vUlnerable*
 
