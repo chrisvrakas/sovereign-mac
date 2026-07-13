@@ -6,7 +6,7 @@ If you discover a security vulnerability in sovereign-mac, please report it resp
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Instead, email: [connect@chrisvrakas.com](mailto:connect@chrisvrakas.com)
+Instead, email: [freedom@chrisvrakas.com](mailto:freedom@chrisvrakas.com)
 
 Include:
 - A description of the vulnerability

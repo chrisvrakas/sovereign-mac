@@ -822,8 +822,8 @@ Re-enables Wi-Fi after the MAC change.
 `ifconfig <iface>`
 Reads current interface info including MAC address — used to verify the change applied.
 
-`sudo ifconfig <iface> ether ""`
-Removes the spoofed MAC. On Apple Silicon, power-cycling the interface restores the hardware MAC from firmware.
+`networksetup -setairportpower <iface> off` / `on`
+Power-cycles the Wi-Fi interface in an attempt to reset the MAC. This does **not** reliably restore your original hardware MAC — a full reboot is the only guaranteed way to reset to the hardware-default address.
 
 ---
 
@@ -838,8 +838,8 @@ Mounts an encrypted container. macOS will prompt for the password.
 `hdiutil detach /Volumes/<name>`
 Unmounts (ejects) a mounted container.
 
-`hdiutil info`
-Lists all currently mounted disk images and their mount points.
+`ls /Volumes/`
+Lists all currently mounted volumes, including any open encrypted containers.
 
 ---
 
