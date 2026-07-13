@@ -810,20 +810,17 @@ Disables the software update daemon.
 `networksetup -listallhardwareports`
 Lists all network interfaces, device names, and current MAC addresses.
 
-`networksetup -setairportpower <iface> off`
-Disables Wi-Fi. Required before changing the MAC address.
+`open "x-apple.systempreferences:com.apple.preference.network"`
+Opens System Settings directly to the Network pane. For Wi-Fi, the recommended path is Wi-Fi → (your network) → Details → Private Wi-Fi Address — Apple's own supported, reliable per-network MAC randomization. Manual Wi-Fi spoofing via Terminal is no longer offered, since it depended on Apple's `airport` disassociation tool, which has been removed from current macOS.
+
+`networksetup -setairportpower <iface> off` / `on`
+Only run when spoofing a detected Wi-Fi interface via the custom-interface option — toggles Wi-Fi power around the MAC change. Skipped entirely for non-Wi-Fi (e.g. wired/Ethernet) interfaces.
 
 `sudo ifconfig <iface> ether <mac>`
-Sets a new MAC address on the specified interface.
-
-`networksetup -setairportpower <iface> on`
-Re-enables Wi-Fi after the MAC change.
+Sets a new MAC address on a specified interface. Confirmed to work reliably on wired/Ethernet and other custom interfaces; Wi-Fi may or may not accept this depending on the Mac and macOS version.
 
 `ifconfig <iface>`
 Reads current interface info including MAC address — used to verify the change applied.
-
-`networksetup -setairportpower <iface> off` / `on`
-Power-cycles the Wi-Fi interface in an attempt to reset the MAC. This does **not** reliably restore your original hardware MAC — a full reboot is the only guaranteed way to reset to the hardware-default address.
 
 ---
 
