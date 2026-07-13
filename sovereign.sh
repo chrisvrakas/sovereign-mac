@@ -736,8 +736,15 @@ menu_mac_spoofer() {
     echo "  ${BLUE}  Your MAC address is a unique hardware identifier broadcast${RESET}"
     echo "  ${BLUE}  on every network you join. Spoofing it makes your device${RESET}"
     echo "  ${BLUE}  harder to track across networks (coffee shops, airports, etc).${RESET}"
-    echo "  ${YELLOW}  Note: on Apple Silicon, the MAC resets to hardware default on reboot.${RESET}"
-    echo "  ${YELLOW}  Use before joining untrusted networks. Restore before going home.${RESET}"
+    echo ""
+    echo "  ${GREEN}  For Wi-Fi, the recommended approach is macOS's own built-in${RESET}"
+    echo "  ${GREEN}  Private Wi-Fi Address feature — it randomizes your MAC per${RESET}"
+    echo "  ${GREEN}  network automatically, and it's fully supported by Apple.${RESET}"
+    echo "  ${YELLOW}  Manual Wi-Fi spoofing via Terminal relied on a disassociation${RESET}"
+    echo "  ${YELLOW}  tool ('airport') that Apple has since removed from macOS, so${RESET}"
+    echo "  ${YELLOW}  it no longer works reliably on modern systems.${RESET}"
+    echo "  ${YELLOW}  Wired/Ethernet interfaces are unaffected by this and can still${RESET}"
+    echo "  ${YELLOW}  be manually randomized below.${RESET}"
     echo ""
 
     # Show current MACs for all interfaces
@@ -749,21 +756,19 @@ menu_mac_spoofer() {
     echo ""
 
     while true; do
-        echo "  ${GREEN}1)${RESET} Randomize MAC on Wi-Fi interface"
-        echo "  ${GREEN}2)${RESET} Randomize MAC on specific interface"
-        echo "  ${GREEN}3)${RESET} Restore MAC to hardware default (Wi-Fi)"
-        echo "  ${GREEN}4)${RESET} Show current MAC addresses"
-        echo "  ${GREEN}5)${RESET} Back"
+        echo "  ${GREEN}1)${RESET} Open Private Wi-Fi Address settings (recommended for Wi-Fi)"
+        echo "  ${GREEN}2)${RESET} Randomize MAC on a specific (e.g. wired) interface"
+        echo "  ${GREEN}3)${RESET} Show current MAC addresses"
+        echo "  ${GREEN}4)${RESET} Back"
         echo ""
         printf "  Selection: "
         read -r opt
 
         case $opt in
-            1) _mac_randomize_wifi ;;
+            1) _mac_open_private_wifi_address ;;
             2) _mac_randomize_custom ;;
-            3) _mac_restore_wifi ;;
-            4) _mac_show_all ;;
-            5) break ;;
+            3) _mac_show_all ;;
+            4) break ;;
             *) print_warn "Invalid selection." ;;
         esac
         echo ""
@@ -775,14 +780,12 @@ _mac_get_wifi_interface() {
     networksetup -listallhardwareports 2>/dev/null |         awk '/Wi-Fi/{found=1} found && /Device:/{print $2; exit}'
 }
 
-_mac_randomize_wifi() {
-    local iface
-    iface=$(_mac_get_wifi_interface)
-    if [[ -z "$iface" ]]; then
-        print_err "Could not detect Wi-Fi interface."
-        return
-    fi
-    _mac_randomize_interface "$iface"
+_mac_open_private_wifi_address() {
+    echo ""
+    print_info "Opening Network settings..."
+    print_info "Go to Wi-Fi -> (your network) -> Details... -> Private Wi-Fi Address"
+    print_info "Set it to 'Rotating' or 'On' depending on your macOS version."
+    _open_settings "com.apple.preference.network"
 }
 
 _mac_randomize_custom() {
@@ -798,28 +801,41 @@ _mac_randomize_custom() {
 
 _mac_randomize_interface() {
     local iface="$1"
-    # Generate a random locally administered MAC
-    # First byte must have bit 1 set (locally administered) and bit 0 unset (unicast)
+    local wifi_iface
+    wifi_iface=$(_mac_get_wifi_interface)
+    local is_wifi=false
+    [[ "$iface" == "$wifi_iface" ]] && is_wifi=true
+    # Generate a random locally administered, unicast MAC.
+    # Prefer openssl for real entropy; fall back to $RANDOM (15-bit) if unavailable.
     local mac
-    # Pure zsh MAC generation — no python3 dependency required
-    # First byte: bit 1 set (locally administered), bit 0 unset (unicast)
-    local b0=$(( ((RANDOM % 254) | 0x02) & 0xFE ))
-    mac=$(printf '%02x:%02x:%02x:%02x:%02x:%02x' \
-        $b0 \
-        $((RANDOM % 256)) \
-        $((RANDOM % 256)) \
-        $((RANDOM % 256)) \
-        $((RANDOM % 256)) \
-        $((RANDOM % 256)))
-    print_info "Disabling Wi-Fi..."
-    networksetup -setairportpower "$iface" off 2>/dev/null || true
-    sleep 1
+    if command -v openssl &>/dev/null; then
+        local hex b0
+        hex=$(openssl rand -hex 6)
+        b0=$(( (0x${hex:0:2} & 0xFC) | 0x02 ))
+        mac=$(printf '%02x:%s:%s:%s:%s:%s' "$b0" "${hex:2:2}" "${hex:4:2}" "${hex:6:2}" "${hex:8:2}" "${hex:10:2}")
+    else
+        local b0=$(( ((RANDOM % 254) | 0x02) & 0xFE ))
+        mac=$(printf '%02x:%02x:%02x:%02x:%02x:%02x' \
+            $b0 \
+            $((RANDOM % 256)) \
+            $((RANDOM % 256)) \
+            $((RANDOM % 256)) \
+            $((RANDOM % 256)) \
+            $((RANDOM % 256)))
+    fi
+    if [[ "$is_wifi" == true ]]; then
+        print_info "Disabling Wi-Fi..."
+        networksetup -setairportpower "$iface" off 2>/dev/null || true
+        sleep 1
+    fi
     print_info "Setting MAC to $mac on $iface..."
     sudo ifconfig "$iface" ether "$mac" 2>/dev/null
     if [[ $? -eq 0 ]]; then
-        print_info "Re-enabling Wi-Fi..."
-        networksetup -setairportpower "$iface" on 2>/dev/null || true
-        sleep 2
+        if [[ "$is_wifi" == true ]]; then
+            print_info "Re-enabling Wi-Fi..."
+            networksetup -setairportpower "$iface" on 2>/dev/null || true
+            sleep 2
+        fi
         local current
         current=$(ifconfig "$iface" 2>/dev/null | awk '/ether/{print $2}')
         if [[ "$current" == "$mac" ]]; then
@@ -827,42 +843,37 @@ _mac_randomize_interface() {
             print_warn "This resets on reboot. Run again each session if needed."
         else
             print_warn "MAC may not have changed. Current: $current"
-            print_warn "Apple Silicon devices enforce hardware MAC on some interfaces."
+            if [[ "$is_wifi" == true ]]; then
+                print_warn "Some Macs/macOS versions restrict this on Wi-Fi specifically."
+                print_info "Reliable native alternative: System Settings > Wi-Fi > (network)"
+                print_info "Details > Private Wi-Fi Address — randomizes per network automatically."
+            fi
         fi
     else
-        print_err "Failed to change MAC. Try running with sudo or check interface name."
+        print_err "Failed to change MAC address."
+        if [[ "$is_wifi" == true ]]; then
+            print_warn "This may not be a sudo or interface-name issue — some Macs"
+            print_warn "and macOS versions restrict MAC changes on Wi-Fi specifically"
+            print_warn "once the interface is associated with a network."
+            print_info "Reliable native alternative: System Settings > Wi-Fi > (network)"
+            print_info "Details > Private Wi-Fi Address — randomizes per network automatically."
+        else
+            print_warn "Double-check the interface name, that you entered your sudo"
+            print_warn "password correctly, and that the interface is actually up"
+            print_warn "(e.g. an Ethernet port needs a cable plugged in)."
+        fi
     fi
-}
-
-_mac_restore_wifi() {
-    local iface
-    iface=$(_mac_get_wifi_interface)
-    if [[ -z "$iface" ]]; then
-        print_err "Could not detect Wi-Fi interface."
-        return
-    fi
-    confirm_proceed "Restore hardware MAC:"         "This will ONLY work if you have REBOOTED since spoofing"         "Without a reboot, your MAC remains spoofed regardless of this action"         "A full reboot is the only reliable way to restore the hardware-default MAC"     || return
-    print_info "Cycling Wi-Fi interface power..."
-    networksetup -setairportpower "$iface" off 2>/dev/null || true
-    sleep 2
-    networksetup -setairportpower "$iface" on 2>/dev/null || true
-    sleep 2
-    local current
-    current=$(ifconfig "$iface" 2>/dev/null | awk '/ether/{print $2}')
-    print_ok "Current MAC: $current"
-    print_warn "If this is NOT your hardware MAC, a full system reboot is required."
 }
 
 _mac_show_all() {
     echo ""
     echo "  ${BOLD}Current MAC addresses:${RESET}"
     echo ""
-    networksetup -listallhardwareports 2>/dev/null |         awk '
+    networksetup -listallhardwareports 2>/dev/null | awk '
             /Hardware Port:/ { port=substr($0, index($0,$3)) }
             /Device:/ { dev=$2 }
             /Ethernet Address:/ {
-                printf "  %-28s %s  →  %s
-", port, dev, $3
+                printf "  %-28s %s  →  %s\n", port, dev, $3
             }
         '
     echo ""

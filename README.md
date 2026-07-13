@@ -233,7 +233,7 @@ Privacy settings use `defaults write` — the standard macOS preference system. 
 ---
 
 ### 6 · Spoof MAC Address
-Changes your Wi-Fi adapter's hardware address — useful for privacy on public networks. Your real MAC address is restored on reboot (Apple Silicon limitation).
+For Wi-Fi, opens macOS's built-in **Private Wi-Fi Address** setting (System Settings → Wi-Fi → network Details) — this is Apple's own supported, reliable way to randomize your MAC per network. Manual Wi-Fi spoofing via Terminal relied on a disassociation tool (`airport`) that Apple has since removed from macOS, so it's no longer offered here as a Wi-Fi option. For wired/Ethernet or other custom interfaces, manual MAC randomization via `ifconfig` still works reliably and remains available.
 
 <div align="center"><img src="assets/images/screenshot-spoofmacaddress.jpg" alt="Spoof MAC Address submenu" width="100%"></div
 
@@ -418,7 +418,7 @@ shasum -a 256 sovereign.sh
 
 **Expected SHA256:**
 ```
-d1e5c4bc32d33f122c87c78592707b27ff6765edd12116df287cc86f147a8f72
+a2edc7ac7456089645d14006673a6dcf194c846279c1e9556de3fb54e27ec6b8
 ```
 
 See the [Changelog](#-changelog) for what changed in this build.
@@ -448,6 +448,25 @@ Two rounds of independent code audits surfaced several correctness bugs and UX h
 
 **Planned for a future release:**
 - Two-mode log cleanup ("Safe Clear" vs. "Full Forensic Wipe") as a more granular alternative to the current single confirmation + warning.
+
+### Round 3 — Real-world testing on Apple Silicon (Mac Mini M4)
+
+- **Confirmed & scoped:** MAC spoofing failure appeared specific to the Wi-Fi interface in initial testing. Testing on wired/Ethernet interfaces succeeded.
+- **Fixed:** misleading MAC-change failure message that suggested a sudo or interface-name problem.
+- **Fixed:** randomizing a non-Wi-Fi interface (e.g. Ethernet) no longer toggles Wi-Fi power as an unrelated side effect. Previously, `networksetup -setairportpower` would silently redirect to the Wi-Fi interface even when targeting Ethernet, since that command doesn't error on a non-Wi-Fi target — it was disrupting Wi-Fi connectivity for a change that had nothing to do with it.
+- **Fixed:** "Show current MAC addresses" crashed with an `awk: non-terminated string` error caused by a literal line break embedded inside a `printf` format string instead of an escaped `\n`.
+
+### Round 4 — Entropy upgrade + native fallback
+
+- **Upgraded:** MAC generation now uses `openssl rand` for real entropy, falling back to `$RANDOM` only if openssl is unavailable.
+- **Added:** when Wi-Fi MAC spoofing fails or doesn't verify, the script now points to macOS's built-in Private Wi-Fi Address setting (System Settings → Wi-Fi → network Details) as a reliable native alternative.
+- **Corrected:** earlier changelog language overstated Wi-Fi MAC spoofing as a confirmed, universal OS-level block. Further testing showed the earlier diagnostic commands were run against the wrong (unplugged Ethernet) interface, so the "confirmed" block was never actually verified against real Wi-Fi. Real-world evidence across the community is mixed by Mac/macOS version — messaging now reflects that some Macs restrict it, rather than presenting it as certain.
+
+### Round 5 — Pivot to native Private Wi-Fi Address for Wi-Fi
+
+- **Root cause fully identified:** manual Wi-Fi MAC spoofing (via this script, and via well-known community tools like `feross/spoof`/`SpoofMAC`) has always depended on Apple's `airport` binary to disassociate the Wi-Fi interface before changing its MAC. That binary has been removed from current macOS entirely — confirmed missing via direct testing. This isn't fixable from a shell script; it's a removed OS component.
+- **Changed:** the MAC spoofing menu no longer offers Wi-Fi-specific randomize/restore options. Instead, it opens System Settings directly to the Wi-Fi pane and directs users to Apple's own **Private Wi-Fi Address** feature, which solves the same privacy goal natively and reliably.
+- **Kept:** manual MAC randomization for wired/Ethernet and other custom interfaces, which is confirmed to still work via `ifconfig` on current macOS.
 
 ---
 
