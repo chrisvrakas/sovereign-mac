@@ -41,8 +41,9 @@ CYAN=$(tput setaf 6)
 BOLD=$(tput bold)
 RESET=$(tput sgr0)
 
-# Redraw header on terminal resize
-trap 'print_header' SIGWINCH
+# Note: previously had a SIGWINCH trap that redrew the header on terminal
+# resize, but that cleared the screen mid-operation (e.g. during brew upgrade
+# or file search), wiping in-progress output. Removed — not worth the risk.
 
 # ============================================
 # HELPERS
@@ -105,7 +106,7 @@ confirm_proceed() {
     echo ""
     printf "${YELLOW}  Proceed? (y/n): ${RESET}"
     read -r ans
-    [[ "$ans" == "y" ]]
+    [[ "$ans" =~ ^[Yy](es)?$ ]]
 }
 
 # ============================================
@@ -622,7 +623,9 @@ run_logs_cache_cleanup() {
         "Clears Mail app connection logs" \
         "Clears iOS device backup records and connected device history" \
         "Flushes DNS cache and purges RAM cache" \
-        "WARNING: Deleted logs cannot be recovered" \
+        "WARNING: Deletes install.log and receipts — removes forensic evidence" \
+        "If your Mac is later compromised, these logs are critical for incident response" \
+        "Deleted logs cannot be recovered" \
         "Typically frees 1-10GB+ of disk space" \
     || return
 
@@ -800,7 +803,7 @@ _mac_randomize_interface() {
     local mac
     # Pure zsh MAC generation — no python3 dependency required
     # First byte: bit 1 set (locally administered), bit 0 unset (unicast)
-    local b0=$(( (RANDOM % 254) | 0x02 & 0xFE ))
+    local b0=$(( ((RANDOM % 254) | 0x02) & 0xFE ))
     mac=$(printf '%02x:%02x:%02x:%02x:%02x:%02x' \
         $b0 \
         $((RANDOM % 256)) \
@@ -838,20 +841,16 @@ _mac_restore_wifi() {
         print_err "Could not detect Wi-Fi interface."
         return
     fi
-    confirm_proceed "Restore hardware MAC:"         "Disables Wi-Fi, removes the spoofed MAC, re-enables Wi-Fi"         "The hardware MAC is permanently stored in firmware"     || return
-    print_info "Disabling Wi-Fi..."
+    confirm_proceed "Restore hardware MAC:"         "This will ONLY work if you have REBOOTED since spoofing"         "Without a reboot, your MAC remains spoofed regardless of this action"         "A full reboot is the only reliable way to restore the hardware-default MAC"     || return
+    print_info "Cycling Wi-Fi interface power..."
     networksetup -setairportpower "$iface" off 2>/dev/null || true
-    sleep 1
-    print_info "Removing spoofed MAC..."
-    sudo ifconfig "$iface" ether "" 2>/dev/null ||     sudo ifconfig "$iface" lladdr random 2>/dev/null || true
-    # Rebooting the interface restores hardware MAC on Apple Silicon
-    print_info "Re-enabling Wi-Fi..."
+    sleep 2
     networksetup -setairportpower "$iface" on 2>/dev/null || true
     sleep 2
     local current
     current=$(ifconfig "$iface" 2>/dev/null | awk '/ether/{print $2}')
     print_ok "Current MAC: $current"
-    print_warn "If MAC did not restore, a full reboot will reset it to hardware default."
+    print_warn "If this is NOT your hardware MAC, a full system reboot is required."
 }
 
 _mac_show_all() {
@@ -1015,15 +1014,12 @@ _container_unmount() {
 _container_list() {
     echo ""
     local found=false
-    hdiutil info 2>/dev/null | grep -A 5 "\.dmg\|\.sparseimage" |         grep -E "image-path|/Volumes/" |         while IFS= read -r line; do
-            echo "  $line"
-            found=true
-        done
-    # Simpler approach — just show /Volumes
     echo "  ${BOLD}Mounted volumes:${RESET}"
-    ls /Volumes/ 2>/dev/null | while read -r vol; do
+    while IFS= read -r vol; do
         echo "  /Volumes/$vol"
-    done
+        found=true
+    done < <(ls /Volumes/ 2>/dev/null)
+    [[ "$found" == false ]] && echo "  (no mounted containers)"
 }
 
 # ============================================
@@ -1124,7 +1120,7 @@ _newmachine_harden_brew() {
     fi
 
     if ! grep -q "HOMEBREW_CASK_OPTS" "$profile" 2>/dev/null; then
-        echo "export HOMEBREW_CASK_OPTS="--require-sha"" >> "$profile"
+        echo 'export HOMEBREW_CASK_OPTS="--require-sha"' >> "$profile"
         print_ok "Added HOMEBREW_CASK_OPTS=--require-sha to $profile"
         changed=true
     else
@@ -2154,8 +2150,11 @@ _strip_exif() {
     confirm_proceed "Strip EXIF metadata:" \
         "File: $(basename "$imgpath")" \
         "Removes ALL metadata — GPS, camera info, timestamps, serial numbers" \
-        "Original backed up as: $(basename "$imgpath")_original" \
+        "Original backed up as: filename_original (e.g., photo.jpg becomes photo.jpg_original)" \
     || return
+
+    print_info "Backing up original to $(basename "$imgpath")_original..."
+    cp "$imgpath" "${imgpath}_original"
 
     print_info "Stripping metadata from: $(basename "$imgpath")..."
     exiftool -all= -overwrite_original "$imgpath" 2>/dev/null
@@ -2317,4 +2316,14 @@ main_menu() {
     done
 }
 
+_check_macos_version() {
+    local os_ver
+    os_ver=$(sw_vers -productVersion 2>/dev/null | cut -d. -f1)
+    if [[ -n "$os_ver" ]] && [[ "$os_ver" -lt 12 ]]; then
+        print_err "macOS 12 (Monterey) or newer required. You have $(sw_vers -productVersion)."
+        exit 1
+    fi
+}
+
+_check_macos_version
 main_menu "$@"

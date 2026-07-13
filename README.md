@@ -20,6 +20,7 @@ Built for people who want a private, hardened Mac but don't want to spend hours 
 - [Quick Start](#quick-start)
 - [Features](#features)
 - [Philosophy](#philosophy)
+- [Changelog](#-changelog)
 - [Recommended Tools](#-recommended-tools)
 - [Command Reference](COMMANDS.md) ← full list of every terminal command
 - [Credits](#-credits--inspiration)
@@ -417,8 +418,36 @@ shasum -a 256 sovereign.sh
 
 **Expected SHA256:**
 ```
-a24a61eb638d6fc9bd55a6c517c0c5f0bd3dae630fbfbcb82b410bc772a49057
+d1e5c4bc32d33f122c87c78592707b27ff6765edd12116df287cc86f147a8f72
 ```
+
+See the [Changelog](#-changelog) for what changed in this build.
+
+---
+
+## 📋 Changelog
+
+### Unreleased — Security & Correctness Audit Fixes
+
+Two rounds of independent code audits surfaced several correctness bugs and UX honesty issues. All have been fixed below. SHA256 of `sovereign.sh` updated accordingly (see Security Note above).
+
+**Round 1:**
+- **Fixed:** MAC randomization operator-precedence bug — the multicast bit was never actually cleared, which could generate invalid (multicast) MAC addresses.
+- **Fixed:** MAC restore function called `ifconfig ... ether ""`, a no-op that did nothing.
+- **Fixed:** Quoting bug in Homebrew hardening that wrote a malformed `HOMEBREW_CASK_OPTS` line (worked by accident, but fragile).
+- **Fixed:** EXIF stripping tool promised a backup file it never created — now actually creates `filename_original` before stripping metadata.
+
+**Round 2:**
+- **Fixed:** MAC restore function still assigned a new random MAC while claiming to "restore" — it now only cycles Wi-Fi power and honestly reports whether a reboot is needed to get back to the hardware MAC.
+- **Fixed:** Removed dead/redundant `hdiutil` block in the container list function; fixed a subshell variable-scoping bug using process substitution.
+- **Fixed:** Clarified ambiguous backup-filename wording in the EXIF confirmation dialog.
+- **Fixed:** Strengthened the log cleanup warning to explicitly call out loss of forensic evidence (`install.log`, `/var/db/receipts`), not just "cannot be recovered."
+- **Fixed:** Confirmation prompts now accept `y`, `Y`, `yes`, and `Yes` (previously lowercase `y` only).
+- **Added:** macOS version check at script startup — exits cleanly with a clear message on macOS < 12.
+- **Removed:** SIGWINCH terminal-resize trap that could wipe in-progress output (e.g. mid-`brew upgrade` or file search) on terminal resize.
+
+**Planned for a future release:**
+- Two-mode log cleanup ("Safe Clear" vs. "Full Forensic Wipe") as a more granular alternative to the current single confirmation + warning.
 
 ---
 
@@ -483,7 +512,6 @@ sovereign-mac stands on the shoulders of people who have spent years documenting
 - **[herrbischoff / awesome-macos-command-line](https://github.com/herrbischoff/awesome-macos-command-line)** — curated macOS CLI reference
 - **[StevenBlack / hosts](https://github.com/StevenBlack/hosts)** — unified hosts file blocking ~150,000 tracker and ad domains
 - **[arkenfox / user.js](https://github.com/arkenfox/user.js)** — Firefox hardening reference
-- **[Naomi Brockwell](https://www.youtube.com/@NaomiBrockwellTV)** - Advancing freedom through technology
 - **[Sun Knudsen](https://sunknudsen.com)** — macOS privacy guides including cold boot attack protection
 - **[Rayo](https://ad-store.sgp1.digitaloceanspaces.com/VONU/2022/08/Vonu%20Book%201%20Paperback%20Official.pdf)** — the Vonu philosophy: *VOluntary Not vUlnerable*
 
@@ -505,7 +533,7 @@ This project is open source and available under the [MIT License](LICENSE) — f
 - GitHub: [@chrisvrakas](https://github.com/chrisvrakas)
 - X: [@chris_vrakas](https://x.com/chris_vrakas)
 - Medium: [@chrisvrakas](https://medium.com/@chrisvrakas)
-- PGP: [connect@chrisvrakas.com](mailto:connect@chrisvrakas.com)
+- PGP: [freedom@chrisvrakas.com](mailto:freedom@chrisvrakas.com)
 
 ---
 
