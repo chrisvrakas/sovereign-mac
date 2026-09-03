@@ -605,6 +605,160 @@ run_privacy_settings() {
 }
 
 # ============================================
+# PROTECTED CACHE PATTERNS (privacy-critical apps)
+# ============================================
+
+# Reverse-DNS bundle IDs that must never be cleaned
+# Updated monthly via bundle-drift audit against /System/Applications
+PROTECTED_CACHE_IDS=(
+    # Password managers
+    "com.1password.*"
+    "com.agilebits.*"
+    "com.bitwarden.*"
+    "com.lastpass.*"
+    "com.dashlane.*"
+    "org.keepassxc.*"
+    "org.keepassx.*"
+    "com.authy.*"
+    "com.yubico.*"
+
+    # VPN clients
+    "io.tailscale.*"
+    "com.wireguard.*"
+    "org.amnezia.*"
+    "com.zerotier.*"
+    "*mullvad*"
+    "*protonvpn*"
+    "*nordvpn*"
+    "*expressvpn*"
+    "*surfshark*"
+
+    # Security tools
+    "at.obdev.littlesnitch"
+    "com.objective-see.*"      # LuLu, KnockKnock, TaskExplorer, etc.
+    "com.signal.*"             # Signal messenger cache
+    "org.whispersystems.*"     # Signal legacy
+
+    # Crypto wallets
+    "org.bitcoin.*"
+    "org.electrum.*"
+    "com.exodus.*"
+    "com.metamask.*"
+)
+
+# Converts a KB integer to a human-readable string (e.g. "37.0MB")
+_human_size_from_kb() {
+    local kb="${1:-0}"
+    if (( kb >= 1048576 )); then
+        printf "%.1fGB" "$((kb / 1048576.0))"
+    elif (( kb >= 1024 )); then
+        printf "%.1fMB" "$((kb / 1024.0))"
+    else
+        printf "%dKB" "$kb"
+    fi
+}
+
+_clear_cache_dir() {
+    local base="$1"
+    local use_sudo="$2"  # "sudo" or empty
+    local entry name skipped=0
+    local dir_total_kb=0 dir_item_count=0
+
+    [[ -d "$base" ]] || return 0
+
+    for entry in "$base"/*(N); do
+        [[ -e "$entry" ]] || continue
+        name="${entry:t}"  # zsh basename
+
+        local protect=false
+        local pattern
+        for pattern in "${PROTECTED_CACHE_IDS[@]}"; do
+            if [[ "$name" == $~pattern ]]; then
+                protect=true
+                break
+            fi
+        done
+
+        if [[ "$protect" == true ]]; then
+            print_info "  Skipping protected cache: $name"
+            ((skipped++))
+            continue
+        fi
+
+        # Measured before deletion. This dir is bounded (Library/Caches),
+        # unlike system log/diagnostics trees elsewhere in this function,
+        # so a per-item `du` here is cheap and safe to run unconditionally.
+        local size_kb
+        size_kb=$(du -sk "$entry" 2>/dev/null | awk '{print $1}')
+        size_kb="${size_kb:-0}"
+
+        if [[ "$use_sudo" == "sudo" ]]; then
+            sudo rm -rf "$entry" 2>/dev/null
+        else
+            rm -rf "$entry" 2>/dev/null
+        fi
+
+        if [[ ! -e "$entry" ]]; then
+            echo "  ${GREEN}✓${RESET} $name ${CYAN}·${RESET} $(_human_size_from_kb "$size_kb")"
+            dir_total_kb=$((dir_total_kb + size_kb))
+            ((dir_item_count++))
+        fi
+    done
+
+    [[ $skipped -gt 0 ]] && print_info "  Protected $skipped cache(s) from privacy-critical apps"
+    if [[ $dir_item_count -gt 0 ]]; then
+        print_ok "  Cleared $dir_item_count item(s), $(_human_size_from_kb "$dir_total_kb") from $base"
+    fi
+
+    # Accumulate into the run-wide totals reported at the end of
+    # run_logs_cache_cleanup(). Caller is responsible for zeroing these
+    # before the first call in a run.
+    _CACHE_CLEAR_TOTAL_KB=$(( ${_CACHE_CLEAR_TOTAL_KB:-0} + dir_total_kb ))
+    _CACHE_CLEAR_TOTAL_ITEMS=$(( ${_CACHE_CLEAR_TOTAL_ITEMS:-0} + dir_item_count ))
+}
+
+# Read-only check: lists top-level entries under both cache roots that are
+# NOT matched by PROTECTED_CACHE_IDS, so new privacy-sensitive apps (installed
+# after this list was last reviewed) can be spotted before running Logs &
+# Cache Cleanup rather than after. Does not delete or modify anything.
+_cache_protection_coverage_check() {
+    print_section "CACHE PROTECTION COVERAGE CHECK"
+    echo "  ${BLUE}  Lists cache entries NOT matched by PROTECTED_CACHE_IDS.${RESET}"
+    echo "  ${BLUE}  Read-only - nothing is changed. Review before running${RESET}"
+    echo "  ${BLUE}  Logs & Cache Cleanup if you see something worth protecting.${RESET}"
+    echo ""
+
+    local base entry name covered pattern found_any=false
+
+    for base in "/Library/Caches" "$HOME/Library/Caches"; do
+        [[ -d "$base" ]] || continue
+        print_info "Scanning $base ..."
+        for entry in "$base"/*(N); do
+            [[ -e "$entry" ]] || continue
+            name="${entry:t}"
+            covered=false
+            for pattern in "${PROTECTED_CACHE_IDS[@]}"; do
+                if [[ "$name" == $~pattern ]]; then
+                    covered=true
+                    break
+                fi
+            done
+            if [[ "$covered" == false ]]; then
+                echo "    ${YELLOW}?${RESET} $name"
+                found_any=true
+            fi
+        done
+    done
+
+    echo ""
+    if [[ "$found_any" == true ]]; then
+        print_warn "Entries above are NOT in PROTECTED_CACHE_IDS - review and add if privacy-sensitive."
+    else
+        print_ok "Every cache entry is covered by PROTECTED_CACHE_IDS or Apple's own com.apple.* space."
+    fi
+}
+
+# ============================================
 # MODULE: LOGS & CACHE CLEANUP
 # ============================================
 
@@ -616,18 +770,23 @@ run_logs_cache_cleanup() {
         "Empties trash on all volumes" \
         "Deletes system logs, ASL logs, audit logs, diagnostic data" \
         "Clears maintenance logs (daily/weekly/monthly)" \
-        "Clears system and user caches (Homebrew, pip, npm, yarn)" \
+        "Clears system and user caches (with privacy-app protection)" \
         "Clears Quick Look thumbnail cache and print spooler" \
         "Clears Xcode derived data and archives" \
         "Clears Safari browsing history, cache, cookies, and thumbnails" \
         "Clears Mail app connection logs" \
         "Clears iOS device backup records and connected device history" \
         "Flushes DNS cache and purges RAM cache" \
-        "WARNING: Deletes install.log and receipts — removes forensic evidence" \
+        "WARNING: Deletes install.log and receipts - removes forensic evidence" \
         "If your Mac is later compromised, these logs are critical for incident response" \
         "Deleted logs cannot be recovered" \
         "Typically frees 1-10GB+ of disk space" \
     || return
+
+    _CACHE_CLEAR_TOTAL_KB=0
+    _CACHE_CLEAR_TOTAL_ITEMS=0
+    local _free_before_kb
+    _free_before_kb=$(df -k "$HOME" 2>/dev/null | awk 'NR==2{print $4}')
 
     sudo -v
 
@@ -666,13 +825,9 @@ run_logs_cache_cleanup() {
     sudo rm -f /private/var/log/weekly.out 2>/dev/null
     sudo rm -f /private/var/log/monthly.out 2>/dev/null
 
-    print_info "Clearing system and user caches..."
-    sudo rm -rfv /Library/Caches/* 2>/dev/null
-    sudo rm -rfv "$HOME/Library/Caches/"* 2>/dev/null
-    rm -rf "$HOME/Library/Caches/Homebrew" 2>/dev/null
-    rm -rf "$HOME/Library/Caches/pip" 2>/dev/null
-    rm -rf "$HOME/Library/Caches/yarn" 2>/dev/null
-    rm -rf "$HOME/Library/Caches/npm" 2>/dev/null
+    print_info "Clearing system and user caches (protecting privacy-critical apps)..."
+    _clear_cache_dir "/Library/Caches" "sudo"
+    _clear_cache_dir "$HOME/Library/Caches" ""
 
     print_info "Clearing Quick Look cache..."
     rm -rf "$HOME/Library/Application Support/Quick Look/"* 2>/dev/null
@@ -723,6 +878,20 @@ run_logs_cache_cleanup() {
     print_info "Purging RAM cache..."
     sudo purge
 
+    echo ""
+    echo "  ${BOLD}${CYAN}════════════════════════════════════════${RESET}"
+    if [[ ${_CACHE_CLEAR_TOTAL_ITEMS:-0} -gt 0 ]]; then
+        print_ok "Cache items cleared: ${_CACHE_CLEAR_TOTAL_ITEMS} ($(_human_size_from_kb "${_CACHE_CLEAR_TOTAL_KB:-0}") tracked)"
+    fi
+    local _free_after_kb _freed_kb
+    _free_after_kb=$(df -k "$HOME" 2>/dev/null | awk 'NR==2{print $4}')
+    if [[ -n "$_free_before_kb" && -n "$_free_after_kb" ]]; then
+        _freed_kb=$((_free_after_kb - _free_before_kb))
+        if [[ $_freed_kb -gt 0 ]]; then
+            print_ok "Free space increased by approx $(_human_size_from_kb "$_freed_kb")"
+        fi
+    fi
+    echo "  ${BOLD}${CYAN}════════════════════════════════════════${RESET}"
     print_ok "Logs and cache cleanup complete."
 }
 
@@ -1630,6 +1799,119 @@ _toggle_auto_updates() {
 # RESTORED MODULES
 # ============================================
 
+# Numbered multi-select picker for Homebrew packages (formulae + casks).
+# Deliberately NOT a raw single-keystroke/arrow-key TUI: this script already
+# has a proven, terminal-portable interaction pattern (read a line, act on
+# it) used everywhere else, and this stays consistent with that rather than
+# introducing untested raw-terminal-mode input handling.
+_homebrew_uninstall_picker() {
+    print_info "Scanning installed packages (this can take a moment)..."
+
+    local -a formulae casks names types
+    local -a sizes
+    local pkg cellar caskroom size_kb
+
+    formulae=("${(@f)$(brew list --formula 2>/dev/null)}")
+    casks=("${(@f)$(brew list --cask 2>/dev/null)}")
+    cellar=$(brew --cellar 2>/dev/null)
+    caskroom=$(brew --caskroom 2>/dev/null)
+
+    for pkg in "${formulae[@]}"; do
+        [[ -z "$pkg" ]] && continue
+        size_kb=$(du -sk "$cellar/$pkg" 2>/dev/null | awk '{print $1}')
+        names+=("$pkg"); types+=("formula"); sizes+=("${size_kb:-0}")
+    done
+    for pkg in "${casks[@]}"; do
+        [[ -z "$pkg" ]] && continue
+        size_kb=$(du -sk "$caskroom/$pkg" 2>/dev/null | awk '{print $1}')
+        names+=("$pkg"); types+=("cask"); sizes+=("${size_kb:-0}")
+    done
+
+    if [[ ${#names[@]} -eq 0 ]]; then
+        print_warn "No Homebrew packages found."
+        return
+    fi
+
+    local -a selected
+    local i
+    for (( i = 1; i <= ${#names[@]}; i++ )); do
+        selected[$i]=0
+    done
+
+    while true; do
+        [[ -t 1 ]] && printf '\033[2J\033[H'
+
+        local selected_count=0
+        for (( i = 1; i <= ${#names[@]}; i++ )); do
+            [[ "${selected[$i]}" == 1 ]] && ((selected_count++))
+        done
+
+        print_section "HOMEBREW MAINTENANCE > UNINSTALL A PACKAGE"
+        print_info "Toggle by number (space or comma separated) · 'u' uninstall selected · 'q' cancel, back to menu"
+        echo ""
+        for (( i = 1; i <= ${#names[@]}; i++ )); do
+            local mark="[ ]"
+            [[ "${selected[$i]}" == 1 ]] && mark="${GREEN}[x]${RESET}"
+            printf "  %s %3d) %-40s %10s  (%s)\n" "$mark" "$i" "${names[$i]}" "$(_human_size_from_kb "${sizes[$i]}")" "${types[$i]}"
+        done
+        echo ""
+        if [[ $selected_count -gt 0 ]]; then
+            print_info "${selected_count} package(s) selected. Type 'u' to uninstall, or keep toggling."
+        fi
+        print_info "'u' uninstall selected · 'q' cancel, back to menu"
+        printf "  Selection: "
+        read -r input
+
+        case "$input" in
+            q|Q) print_info "Cancelled."; return ;;
+            u|U)
+                local -a to_remove
+                for (( i = 1; i <= ${#names[@]}; i++ )); do
+                    [[ "${selected[$i]}" == 1 ]] && to_remove+=("$i")
+                done
+                if [[ ${#to_remove[@]} -eq 0 ]]; then
+                    print_warn "Nothing selected."
+                    continue
+                fi
+                echo ""
+                print_info "Selected for removal:"
+                for i in "${to_remove[@]}"; do
+                    echo "    - ${names[$i]} (${types[$i]}, $(_human_size_from_kb "${sizes[$i]}"))"
+                done
+                confirm_proceed "Uninstall ${#to_remove[@]} package(s):" \
+                    "Removes each package - casks are removed with --zap (associated app data too)" \
+                    "Cleans up old Homebrew versions and cache afterward" \
+                    "This cannot be undone without reinstalling" \
+                || continue
+                for i in "${to_remove[@]}"; do
+                    if [[ "${types[$i]}" == "cask" ]]; then
+                        brew uninstall --cask --zap --force "${names[$i]}"
+                    else
+                        brew uninstall --formula --force "${names[$i]}"
+                    fi
+                done
+                brew cleanup -s
+                rm -rf "$(brew --cache)"
+                brew missing
+                brew autoremove
+                print_ok "Uninstall complete."
+                return ;;
+            *)
+                local tok
+                for tok in ${(s: :)${input//,/ }}; do
+                    if [[ "$tok" =~ ^[0-9]+$ ]] && (( tok >= 1 && tok <= ${#names[@]} )); then
+                        if [[ "${selected[$tok]}" == 1 ]]; then
+                            selected[$tok]=0
+                        else
+                            selected[$tok]=1
+                        fi
+                    fi
+                done
+                ;;
+        esac
+    done
+}
+
 menu_homebrew() {
     print_section "HOMEBREW MAINTENANCE"
     echo "  ${BLUE}  Manage all things Homebrew - updates, packages, and security.${RESET}"
@@ -1649,20 +1931,7 @@ menu_homebrew() {
             2)
                 print_info "Installed brew packages:"
                 brew list ;;
-            3)
-                printf "  Enter app name to uninstall: "
-                read -r appname
-                confirm_proceed "Uninstall $appname:" \
-                    "Removes $appname and all associated files (--zap)" \
-                    "Cleans up old Homebrew versions and cache" \
-                    "This cannot be undone without reinstalling" \
-                || break
-                brew uninstall --cask --zap --force "$appname"
-                brew cleanup -s
-                rm -rf "$(brew --cache)"
-                brew missing
-                brew autoremove
-                print_ok "Uninstall complete." ;;
+            3) _homebrew_uninstall_picker ;;
             4) _newmachine_harden_brew ;;
             5) break ;;
             *) print_warn "Invalid selection." ;;
@@ -1686,7 +1955,8 @@ menu_system_status() {
         echo "  ${GREEN}4)${RESET} Confirm Gatekeeper"
         echo "  ${GREEN}5)${RESET} Confirm OS Updates"
         echo "  ${GREEN}6)${RESET} Confirm Launch Programs"
-        echo "  ${GREEN}7)${RESET} Back"
+        echo "  ${GREEN}7)${RESET} Cache Protection Coverage Check"
+        echo "  ${GREEN}8)${RESET} Back"
         echo ""
         printf "  Selection: "
         read -r opt
@@ -1701,7 +1971,8 @@ menu_system_status() {
                 open /Library/LaunchAgents/
                 open /Library/LaunchDaemons/
                 pause ;;
-            7) break ;;
+            7) _cache_protection_coverage_check; pause ;;
+            8) break ;;
             *) print_warn "Invalid selection." ;;
         esac
     done
@@ -1931,9 +2202,189 @@ menu_system_toggles() {
 
 
 # ─────────────────────────────────────────
+# TOUCH ID FOR SUDO
+# ─────────────────────────────────────────
+# Configures pam_tid.so so sudo accepts Touch ID instead of (or alongside)
+# a typed password. Uses sudo_local on Sonoma+ (survives OS updates) and
+# falls back to editing /etc/pam.d/sudo directly on older macOS. A backup
+# of the original file is kept before any edit.
+
+_touchid_pam_sudo_file="/etc/pam.d/sudo"
+_touchid_pam_sudo_local_file="/etc/pam.d/sudo_local"
+_touchid_pam_tid_line="auth       sufficient     pam_tid.so"
+
+_touchid_is_configured() {
+    if [[ -f "$_touchid_pam_sudo_local_file" ]] && grep -q "pam_tid.so" "$_touchid_pam_sudo_local_file" 2>/dev/null; then
+        return 0
+    fi
+    if [[ -f "$_touchid_pam_sudo_file" ]] && grep -q "pam_tid.so" "$_touchid_pam_sudo_file" 2>/dev/null; then
+        return 0
+    fi
+    return 1
+}
+
+_touchid_hardware_present() {
+    if command -v bioutil &>/dev/null; then
+        bioutil -r 2>/dev/null | grep -q "Touch ID" && return 0
+    fi
+    # Fallback: Apple Silicon Macs all ship Touch ID capable controllers
+    # (even on models without a physical sensor, e.g. Mac mini/Studio via
+    # a paired keyboard) far more consistently than Intel-era heuristics.
+    [[ "$(uname -m)" == "arm64" ]]
+}
+
+_touchid_status() {
+    if _touchid_is_configured; then
+        print_ok "Touch ID is enabled for sudo."
+    else
+        print_info "Touch ID is not configured for sudo."
+    fi
+}
+
+_touchid_enable() {
+    if _touchid_is_configured; then
+        print_ok "Touch ID is already enabled."
+        return 0
+    fi
+
+    if ! _touchid_hardware_present; then
+        print_warn "This Mac may not support Touch ID."
+        printf "  Continue anyway? (y/n): "
+        read -r _tc
+        [[ "$_tc" =~ ^[Yy]$ ]] || { print_info "Cancelled."; return 1; }
+    fi
+
+    sudo -v
+
+    # Sonoma+ uses sudo_local so this survives macOS updates that overwrite
+    # /etc/pam.d/sudo. Prefer it whenever the base sudo file references it.
+    if grep -q "sudo_local" "$_touchid_pam_sudo_file" 2>/dev/null; then
+        if [[ ! -f "$_touchid_pam_sudo_local_file" ]]; then
+            { echo "# sudo_local: local customizations for sudo"; echo "$_touchid_pam_tid_line"; } \
+                | sudo tee "$_touchid_pam_sudo_local_file" >/dev/null
+            sudo chmod 444 "$_touchid_pam_sudo_local_file"
+            sudo chown root:wheel "$_touchid_pam_sudo_local_file"
+        else
+            local tmp
+            tmp=$(mktemp "${TMPDIR:-/tmp}/sovereign_sudo_local.XXXXXX")
+            cp "$_touchid_pam_sudo_local_file" "$tmp"
+            echo "$_touchid_pam_tid_line" >> "$tmp"
+            sudo install -m 444 -o root -g wheel "$tmp" "$_touchid_pam_sudo_local_file" && rm -f "$tmp"
+        fi
+        print_ok "Touch ID enabled via sudo_local. Try: sudo ls"
+        return 0
+    fi
+
+    # Legacy path: edit /etc/pam.d/sudo directly.
+    if [[ ! -f "${_touchid_pam_sudo_file}.sovereign-backup" ]]; then
+        sudo cp "$_touchid_pam_sudo_file" "${_touchid_pam_sudo_file}.sovereign-backup"
+    fi
+    local tmp
+    tmp=$(mktemp "${TMPDIR:-/tmp}/sovereign_pam_sudo.XXXXXX")
+    awk -v line="$_touchid_pam_tid_line" '
+        BEGIN { inserted = 0 }
+        /^#/ { print; next }
+        !inserted && /^[^#]/ { print line; inserted = 1 }
+        { print }
+    ' "$_touchid_pam_sudo_file" > "$tmp"
+    if cmp -s "$_touchid_pam_sudo_file" "$tmp"; then
+        print_err "Failed to modify sudo configuration."
+        rm -f "$tmp"
+        return 1
+    fi
+    sudo install -m 444 -o root -g wheel "$tmp" "$_touchid_pam_sudo_file" && rm -f "$tmp"
+    print_ok "Touch ID enabled. Try: sudo ls"
+}
+
+_touchid_disable() {
+    if ! _touchid_is_configured; then
+        print_info "Touch ID is not currently enabled."
+        return 0
+    fi
+
+    sudo -v
+    local tmp
+
+    if [[ -f "$_touchid_pam_sudo_local_file" ]] && grep -q "pam_tid.so" "$_touchid_pam_sudo_local_file" 2>/dev/null; then
+        tmp=$(mktemp "${TMPDIR:-/tmp}/sovereign_sudo_local.XXXXXX")
+        grep -v "pam_tid.so" "$_touchid_pam_sudo_local_file" > "$tmp"
+        sudo install -m 444 -o root -g wheel "$tmp" "$_touchid_pam_sudo_local_file" && rm -f "$tmp"
+    fi
+
+    if [[ -f "$_touchid_pam_sudo_file" ]] && grep -q "pam_tid.so" "$_touchid_pam_sudo_file" 2>/dev/null; then
+        tmp=$(mktemp "${TMPDIR:-/tmp}/sovereign_pam_sudo.XXXXXX")
+        grep -v "pam_tid.so" "$_touchid_pam_sudo_file" > "$tmp"
+        sudo install -m 444 -o root -g wheel "$tmp" "$_touchid_pam_sudo_file" && rm -f "$tmp"
+    fi
+
+    print_ok "Touch ID disabled for sudo."
+}
+
+menu_touchid() {
+    print_section "TOUCH ID FOR SUDO"
+    echo "  ${BLUE}  Lets sudo accept a Touch ID scan instead of typing your${RESET}"
+    echo "  ${BLUE}  admin password every time. Original config is backed up${RESET}"
+    echo "  ${BLUE}  before any change.${RESET}"
+    echo ""
+    _touchid_status
+    while true; do
+        echo ""
+        echo "  ${GREEN}1)${RESET} Enable Touch ID for sudo"
+        echo "  ${GREEN}2)${RESET} Disable Touch ID for sudo"
+        echo "  ${GREEN}3)${RESET} Show status"
+        echo "  ${RED}4)${RESET} Back"
+        echo ""
+        printf "  Selection: "
+        read -r opt
+        case $opt in
+            1)
+                confirm_proceed "Enable Touch ID for sudo:" \
+                    "Modifies your sudo PAM configuration (sudo_local when available)" \
+                    "A backup of the original config is kept before any change" \
+                    "Password entry remains available as a fallback" \
+                || continue
+                _touchid_enable ;;
+            2)
+                confirm_proceed "Disable Touch ID for sudo:" \
+                    "Removes the Touch ID line from your sudo PAM configuration" \
+                    "sudo will require your typed password again" \
+                || continue
+                _touchid_disable ;;
+            3) _touchid_status ;;
+            4) break ;;
+            *) print_warn "Invalid selection." ;;
+        esac
+        pause
+    done
+}
+
+
+# ─────────────────────────────────────────
 # ─────────────────────────────────────────
 # FILE SEARCH
 # ─────────────────────────────────────────
+
+# Structural sanity check only — no existence check. Callers decide what
+# "exists" means for their own case (a folder to search vs. a file to strip
+# EXIF from vs., in the future, an output path that doesn't exist yet).
+_validate_path() {
+    local path="$1"
+
+    # Must be absolute (starts with / or ~)
+    [[ "$path" =~ ^(/|~).* ]] || return 1
+
+    # Reject .. traversal attempts
+    [[ "$path" == *".."* ]] && return 1
+
+    # Reject control characters
+    [[ "$path" =~ [[:cntrl:]] ]] && return 1
+
+    # Reject obviously dangerous device/proc/sys paths
+    local normalized="${path/#\~/$HOME}"
+    [[ "$normalized" =~ ^/(dev|proc|sys)/ ]] && return 1
+
+    return 0
+}
 
 # Strips surrounding whitespace and quotes from drag-and-drop paths
 _clean_path() {
@@ -1944,6 +2395,11 @@ _clean_path() {
     p="${p//\"/}"      # remove double quotes
     p="${p//\\/}"      # remove backslashes (Finder drag-drop escapes spaces as "\ ")
     p="${p/#\~/$HOME}" # expand leading tilde
+
+    if ! _validate_path "$p"; then
+        return 1
+    fi
+
     echo "$p"
 }
 
@@ -1991,6 +2447,10 @@ _search_filename() {
     local searchdir
     searchdir=$(_clean_path "${rawpath:-$HOME}")
 
+    if [[ -z "$searchdir" ]]; then
+        print_err "Invalid path (must be an absolute path, no '..'): ${rawpath:-$HOME}"
+        return
+    fi
     if [[ ! -d "$searchdir" ]]; then
         print_err "Folder not found: $searchdir"
         return
@@ -2002,7 +2462,7 @@ _search_filename() {
     echo ""
 
     local results
-    results=$(find "$searchdir" -maxdepth 5 -iname "*${term}*" 2>/dev/null | head -100)
+    results=$(find "$searchdir" -maxdepth 5 -type f -iname "*${term}*" 2>/dev/null | head -100)
 
     if [[ -z "$results" ]]; then
         print_warn "No files found matching: $term"
@@ -2046,6 +2506,10 @@ _search_content() {
     local searchdir
     searchdir=$(_clean_path "${rawpath:-$HOME/Documents}")
 
+    if [[ -z "$searchdir" ]]; then
+        print_err "Invalid path (must be an absolute path, no '..'): ${rawpath:-$HOME/Documents}"
+        return
+    fi
     if [[ ! -d "$searchdir" ]]; then
         print_err "Folder not found: $searchdir"
         return
@@ -2118,10 +2582,20 @@ _search_size() {
 
     # Scope to $HOME — scans root is extremely slow and almost never what users need.
     # Power users can open a terminal and run: sudo find / -size +1G 2>/dev/null
-    find "$HOME" -type f -size "$size_spec" -exec ls -lh {} \; 2>/dev/null \
-        | awk '{print $5 "\t" $9}' \
-        | sort -rh \
-        | head -50
+    #
+    # Uses `stat -f` with a tab-delimited format instead of parsing `ls -lh`
+    # with awk field numbers ($9 etc.) — that broke on any path containing a
+    # space (e.g. "Library/Application Support/..."), which awk's default
+    # whitespace field-splitting chops into multiple fields, truncating the
+    # displayed path. Sorting numerically on raw bytes also sidesteps
+    # whether this machine's `sort -h` (human-numeric) is supported, since
+    # BSD sort doesn't reliably have it.
+    find "$HOME" -type f -size "$size_spec" -exec stat -f $'%z\t%N' {} + 2>/dev/null \
+        | sort -t$'\t' -k1,1 -rn \
+        | head -50 \
+        | while IFS=$'\t' read -r _bytes _path; do
+            printf "  %10s  %s\n" "$(_human_size_from_kb $((_bytes / 1024)))" "$_path"
+        done
 
     echo ""
     print_ok "Done. Showing top 50 largest files in your home folder."
@@ -2146,33 +2620,50 @@ _strip_exif() {
     echo ""
     echo "  ${BLUE}  Strips ALL EXIF metadata from a photo or image file:${RESET}"
     echo "  ${BLUE}  GPS location, camera model, timestamps, serial numbers.${RESET}"
-    echo "  ${YELLOW}  A backup is saved automatically as: filename_original${RESET}"
+    echo "  ${YELLOW}  A backup is saved automatically with _original before the extension${RESET}"
     echo ""
     printf "  Drag image here (or enter full path): "
     read -r rawpath
     local imgpath
     imgpath=$(_clean_path "$rawpath")
 
+    if [[ -z "$imgpath" ]]; then
+        print_err "Invalid path (must be an absolute path, no '..'): $rawpath"
+        return
+    fi
     if [[ ! -f "$imgpath" ]]; then
         print_err "File not found: $imgpath"
         return
     fi
 
+    # Insert _original before the extension (photo.jpg -> photo_original.jpg)
+    # rather than after it (photo.jpg_original), which has no extension the
+    # OS recognizes as an image — Finder/Preview/QuickLook can't open it even
+    # though the file itself is perfectly valid.
+    local img_ext="${imgpath:e}"
+    local img_base="${imgpath:r}"
+    local backup_path
+    if [[ -n "$img_ext" && "$img_base" != "$imgpath" ]]; then
+        backup_path="${img_base}_original.${img_ext}"
+    else
+        backup_path="${imgpath}_original"
+    fi
+
     confirm_proceed "Strip EXIF metadata:" \
         "File: $(basename "$imgpath")" \
         "Removes ALL metadata — GPS, camera info, timestamps, serial numbers" \
-        "Original backed up as: filename_original (e.g., photo.jpg becomes photo.jpg_original)" \
+        "Original backed up as: $(basename "$backup_path")" \
     || return
 
-    print_info "Backing up original to $(basename "$imgpath")_original..."
-    cp "$imgpath" "${imgpath}_original"
+    print_info "Backing up original to $(basename "$backup_path")..."
+    cp "$imgpath" "$backup_path"
 
     print_info "Stripping metadata from: $(basename "$imgpath")..."
     exiftool -all= -overwrite_original "$imgpath" 2>/dev/null
 
     if [[ $? -eq 0 ]]; then
         print_ok "All metadata stripped: $imgpath"
-        print_info "Backup saved as: ${imgpath}_original"
+        print_info "Backup saved as: $backup_path"
     else
         print_err "Failed — check that the file is a valid image format."
     fi
@@ -2301,6 +2792,7 @@ main_menu() {
         echo "  ${BOLD}${GREEN}10)${RESET} 📋  System Settings Checklist"
         echo "  ${BOLD}${GREEN}11)${RESET} 🔧  System Toggles"
         echo "  ${BOLD}${GREEN}12)${RESET} 🔎  File Search"
+        echo "  ${BOLD}${GREEN}13)${RESET} 🔑  Touch ID for sudo"
         echo "  ${BOLD}${RED}0)${RESET}  🛑  Quit"
         echo ""
         printf "  ${BOLD}Selection: ${RESET}"
@@ -2319,6 +2811,7 @@ main_menu() {
             10) menu_system_settings_checklist ;;
             11) menu_system_toggles ;;
             12) menu_search ;;
+            13) menu_touchid ;;
             0)  echo ""; echo ""
         echo "  ${CYAN}  Voluntary Not Vulnerable.${RESET}"
         echo "  ${CYAN}  sovereign-mac — YOUR machine. YOUR rules.${RESET}"; echo ""; exit 0 ;;

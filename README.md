@@ -127,7 +127,7 @@ Keeps your Homebrew installation clean and secure.
 
 - Updates all installed packages
 - Lists everything currently installed
-- Uninstalls apps with `--zap` (removes all associated files, not just the app)
+- **Uninstall a Package** — interactive picker showing every formula and cask with its size. Toggle multiple packages by number, review the full list before confirming. Casks are removed with `--zap` (all associated app data, not just the app).
 - Removes orphaned dependencies
 - Clears download cache
 
@@ -142,7 +142,8 @@ Keeps your Homebrew installation clean and secure.
 | `brew cleanup -s` | Removes old versions and clears download cache |
 | `brew autoremove` | Removes unused dependencies |
 | `brew doctor` | Diagnoses installation issues |
-| `brew uninstall --cask --zap --force <app>` | Removes app and all associated files |
+| `brew uninstall --cask --zap --force <app>` | Removes a cask and all associated files |
+| `brew uninstall --formula --force <package>` | Removes a formula |
 
 </details>
 
@@ -157,7 +158,7 @@ Wipes forensic traces and frees disk space. Typically recovers 1–10GB+.
 - Trash on all mounted volumes
 - System logs, audit logs, ASL logs, diagnostic logs
 - Daily, weekly, and monthly maintenance logs
-- System and user caches (including Homebrew, pip, npm, yarn)
+- System and user caches — **with privacy-app protection.** Password managers, VPN clients, Signal, and the Objective-See security tools this project recommends are matched against a reverse-DNS bundle-ID list and explicitly skipped, reported by name as each run completes. Real-time output shows exactly what was cleared and how much space it freed, with a closing summary.
 - Quick Look thumbnail cache
 - Print spooler cache
 - Xcode derived data and archives
@@ -177,7 +178,7 @@ Wipes forensic traces and frees disk space. Typically recovers 1–10GB+.
 | `rm -f ~/.bash_history && rm -f ~/.zsh_history` | Deletes terminal history |
 | `sudo rm -rf /Volumes/*/.Trashes/*` | Empties Trash on all volumes |
 | `sudo rm -rf /Library/Logs/* /var/audit/* /private/var/log/asl/*` | Deletes system, audit, and ASL logs |
-| `sudo rm -rf /Library/Caches/* ~/Library/Caches/*` | Deletes system and user caches |
+| `_clear_cache_dir /Library/Caches` / `~/Library/Caches` | Clears system and user caches, skipping anything matched by `PROTECTED_CACHE_IDS` |
 | `qlmanage -r cache` | Clears Quick Look thumbnail cache |
 | `sudo rm -rf /var/spool/cups/c0*` | Clears print spooler |
 | `rm -f ~/Library/Safari/History.db ~/Library/Cookies/Cookies.binarycookies` | Safari forensic wipe (16 files total) |
@@ -185,7 +186,7 @@ Wipes forensic traces and frees disk space. Typically recovers 1–10GB+.
 | `sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder` | Flushes DNS cache |
 | `sudo purge` | Purges RAM cache |
 
-See [COMMANDS.md](COMMANDS.md) for the complete list of all ~45 cleanup commands.
+See [COMMANDS.md](COMMANDS.md) for the complete list of all cleanup commands.
 
 </details>
 
@@ -265,6 +266,7 @@ Read-only security audit. Nothing changes — it just checks and reports.
 - Gatekeeper status
 - Available OS updates
 - LaunchAgents (opens in Finder for easy review and deletion)
+- **Cache Protection Coverage Check** — lists any cache entries under `/Library/Caches` or `~/Library/Caches` not matched by `PROTECTED_CACHE_IDS`, so you can spot a new privacy-sensitive app before running Logs & Cache Cleanup, not after
 
 <details>
 <summary><strong>Show terminal commands</strong></summary>
@@ -375,10 +377,31 @@ Search your filesystem and strip metadata from images. Drag a folder into the te
 
 | Option | What it does |
 |--------|-------------|
-| Search by Filename | Finds files by name anywhere in your home folder (or any folder you drag in). Searches 5 levels deep, capped at 100 results. |
+| Search by Filename | Finds files (not folders) by name anywhere in your home folder (or any folder you drag in). Searches 5 levels deep, capped at 100 results. |
 | Search by Content | Full-text search inside files using ripgrep. Skips binary files. Default: ~/Documents. |
-| Search by Size | Finds files above a size threshold. Preset options (100MB–5GB) or custom. Shows top 50 largest. |
-| **Strip EXIF Metadata** | Removes all metadata from an image — GPS location, camera model, serial number, timestamps. Prevents doxxing via photo sharing. Requires exiftool (script offers to install it). |
+| Search by Size | Finds files above a size threshold. Preset options (100MB–5GB) or custom. Shows top 50 largest, sorted correctly regardless of spaces in folder names. |
+| **Strip EXIF Metadata** | Removes all metadata from an image — GPS location, camera model, serial number, timestamps. Prevents doxxing via photo sharing. Backup saved as `filename_original.ext` — extension preserved, so the backup itself stays openable. Requires exiftool (script offers to install it). |
+
+---
+
+### 13 · Touch ID for sudo
+Lets `sudo` accept a Touch ID scan instead of a typed password.
+
+- Detects hardware support before making any change
+- Uses `sudo_local` on macOS Sonoma (14)+, which survives OS updates that overwrite `/etc/pam.d/sudo` directly
+- Falls back to editing `/etc/pam.d/sudo` on older macOS (12–13), with the original file backed up first
+- Password entry always remains available as a fallback — this adds Touch ID, it doesn't remove the password option
+- Enable, disable, and status are all separate, explicit actions — nothing is turned on silently
+
+<details>
+<summary><strong>Show terminal commands</strong></summary>
+
+| Command | What it does |
+|---------|-------------|
+| `grep pam_tid.so /etc/pam.d/sudo_local` | Checks whether Touch ID is currently configured |
+| `sudo install -m 444 -o root -g wheel <file> /etc/pam.d/sudo_local` | Writes the Touch ID PAM line with correct permissions |
+
+</details>
 
 ---
 
@@ -418,7 +441,7 @@ shasum -a 256 sovereign.sh
 
 **Expected SHA256:**
 ```
-a2edc7ac7456089645d14006673a6dcf194c846279c1e9556de3fb54e27ec6b8
+5787bcfba3332078fd02a82a9694b4b5ca1965b9eb2749df141851fb82d33add
 ```
 
 See the [Changelog](#-changelog) for what changed in this build.
@@ -467,6 +490,29 @@ Two rounds of independent code audits surfaced several correctness bugs and UX h
 - **Root cause fully identified:** manual Wi-Fi MAC spoofing (via this script, and via well-known community tools like `feross/spoof`/`SpoofMAC`) has always depended on Apple's `airport` binary to disassociate the Wi-Fi interface before changing its MAC. That binary has been removed from current macOS entirely — confirmed missing via direct testing. This isn't fixable from a shell script; it's a removed OS component.
 - **Changed:** the MAC spoofing menu no longer offers Wi-Fi-specific randomize/restore options. Instead, it opens System Settings directly to the Wi-Fi pane and directs users to Apple's own **Private Wi-Fi Address** feature, which solves the same privacy goal natively and reliably.
 - **Kept:** manual MAC randomization for wired/Ethernet and other custom interfaces, which is confirmed to still work via `ifconfig` on current macOS.
+
+### Round 6 — New modules + cache/path safety audit (cross-checked against Mole)
+
+**Added:**
+- Touch ID for sudo (menu item 13) — `sudo_local`-first (Sonoma+) with legacy PAM fallback, original config always backed up before any edit.
+- Cache Protection Coverage Check (System Status) — read-only scan listing any cache entries not covered by `PROTECTED_CACHE_IDS`, so new privacy-sensitive apps can be spotted before running Logs & Cache Cleanup rather than after.
+- Interactive multi-select picker for Homebrew uninstall (Homebrew Maintenance → Uninstall a Package), replacing a free-text "enter app name" prompt. Lists formulae and casks with sizes, toggle by number, single confirmation before removal.
+- Real-time per-item output during cache cleanup (name + size cleared) with a closing summary (items cleared, approximate free-space delta).
+
+**Fixed — cache cleanup was deleting privacy-critical app data:**
+- `run_logs_cache_cleanup` used an unqualified wildcard (`rm -rf /Library/Caches/*`, `rm -rf ~/Library/Caches/*`) that deleted the cache for anything living under those paths — including password managers, VPN clients, and the Objective-See tools this project recommends installing. Added `PROTECTED_CACHE_IDS`, a list of real reverse-DNS bundle identifiers (not marketing names), and a `_clear_cache_dir` helper that skips them with per-item reporting.
+- Removed four now-dead cache-deletion lines (Homebrew/pip/yarn/npm) that ran *after* the wildcard above had already deleted the same paths — harmless no-ops, but confusing to read as if they were doing something.
+
+**Fixed — path handling:**
+- `_clean_path()` had no structural validation. Added `_validate_path()` (rejects non-absolute paths, `..` traversal, control characters) as a sanitizer only — deliberately no existence check, so the three existing call sites keep their specific "Folder not found" / "File not found" messages instead of one generic error.
+- Those three call sites previously showed a blank `"Folder not found: "` (nothing after the colon) when `_clean_path` rejected an input outright. Now reports the actual reason and the original input typed.
+- Filename search (`_search_filename`) had no `-type f` restriction, so a search root could match its own directory name as a "found" result. Restricted to files.
+
+**Fixed — EXIF strip backup was unopenable:**
+- The automatic backup was named `photo.png_original` — appending `_original` after the extension leaves a file with no extension the OS recognizes as an image, so Finder/Preview/QuickLook can't open it even though the underlying data is intact. Now inserts `_original` before the extension (`photo_original.png`).
+
+**Fixed — Search by Size silently truncated results:**
+- Parsed `ls -lh` output by awk field position (`$9`), which breaks on any path containing a space — extremely common on macOS (`Library/Application Support/...`). Rewritten to use `stat -f` with a tab-delimited format and sort numerically on raw byte count, which also removes a dependency on GNU-only `sort -h`.
 
 ---
 
