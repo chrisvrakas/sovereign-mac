@@ -1,7 +1,7 @@
 # SOVEREIGN-MAC
+**A macOS Privacy & Security Toolkit**
 
-> **A macOS Privacy & Security Toolkit**
-> *Don't trust Apple. Verify. YOUR machine. YOUR rules.*
+> Don't trust Apple. VERIFY. YOUR machine. YOUR rules.
 
 <div align="center"><img src="assets/images/sovereign-banner.png" alt="sovereign-mac" width="100%"></div>
 
