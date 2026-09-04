@@ -63,6 +63,8 @@ Example: `defaults read com.apple.Safari AutoFillPasswords`
 18. [MAC Address Spoofer](#6--mac-address-spoofer)
 19. [Encrypted Container Wizard](#7--encrypted-container-wizard)
 20. [System Status Checks](#8--system-status-checks)
+21. [File Search](#9--file-search)
+22. [Touch ID for sudo](#10--touch-id-for-sudo)
 
 ---
 
@@ -95,8 +97,8 @@ Runs Homebrew's self-diagnostic and flags any installation issues.
 `brew list`
 Lists all currently installed packages and casks.
 
-`brew uninstall --cask --zap --force <app>`
-Uninstalls an app and removes all associated files, preferences, and support data. `--zap` is thorough — it goes beyond what a normal uninstall removes.
+`brew uninstall --cask --zap --force <app>` and `brew uninstall --formula --force <package>`
+Run from the interactive uninstall picker (Homebrew Maintenance → Uninstall a Package), which lists every installed formula and cask with its size so you can select multiple items by number before confirming. Casks are removed with `--zap` — thorough, goes beyond what a normal uninstall removes. Formulae use the plain formula removal path.
 
 ---
 
@@ -594,17 +596,8 @@ Deletes the install history plist.
 `sudo rm -f /private/var/log/daily.out && weekly.out && monthly.out`
 Deletes daily, weekly, and monthly maintenance logs.
 
-`sudo rm -rf /Library/Caches/* && sudo rm -rf ~/Library/Caches/*`
-Deletes system and user application caches.
-
-`rm -rf ~/Library/Caches/Homebrew`
-Deletes the Homebrew download cache.
-
-`rm -rf ~/Library/Caches/pip`
-Deletes the Python pip cache.
-
-`rm -rf ~/Library/Caches/yarn && rm -rf ~/Library/Caches/npm`
-Deletes Yarn and npm caches.
+`_clear_cache_dir /Library/Caches` and `_clear_cache_dir ~/Library/Caches`
+Deletes system and user application caches — **except** anything matched by `PROTECTED_CACHE_IDS`, a list of real reverse-DNS bundle identifiers for password managers, VPN clients, Signal, and the Objective-See tools this project recommends. Each skipped item is reported by name as the run completes, along with a size total for what was actually cleared.
 
 `rm -rf ~/Library/Application\ Support/Quick\ Look/*`
 Deletes Quick Look thumbnail cache.
@@ -859,6 +852,41 @@ Lists all available macOS software updates.
 
 `df -h /`
 Reports current disk usage on the root volume.
+
+`_cache_protection_coverage_check`
+Read-only scan of `/Library/Caches` and `~/Library/Caches`. Lists any top-level entry not matched by `PROTECTED_CACHE_IDS` so a new privacy-sensitive app can be spotted before running Logs & Cache Cleanup, not after. Changes nothing.
+
+---
+
+## 9 · File Search
+
+Search your filesystem and strip metadata from images. Drag a folder into the terminal to set the search location.
+
+`find "$searchdir" -maxdepth 5 -type f -iname "*term*"`
+Search by Filename. Searches 5 levels deep, restricted to files (not directories), capped at 100 results.
+
+`rg -FiN "term" "$searchdir"`
+Search by Content, via ripgrep. `-F` treats the search term as a literal string, not a regex — pasting something with brackets or parentheses in it won't behave unexpectedly. Skips binary files, capped at 200 matches.
+
+`find "$HOME" -type f -size "$size_spec" -exec stat -f $'%z\t%N' {} +`
+Search by Size. Uses `stat` with a tab-delimited format and sorts numerically on raw byte count, rather than parsing `ls -lh` column output — a filename containing a space (extremely common on macOS: `Library/Application Support/...`) would otherwise get truncated by naive field-splitting. Shows the top 50 largest files.
+
+`exiftool -all= -overwrite_original "$imgpath"`
+Strip EXIF Metadata. Removes all metadata — GPS location, camera model, serial number, timestamps — from an image. A backup is made first with `_original` inserted before the file extension (`photo_original.jpg`, not `photo.jpg_original`), so the backup itself keeps an extension the OS recognizes and stays openable.
+
+---
+
+## 10 · Touch ID for sudo
+
+Lets `sudo` accept a Touch ID scan instead of a typed password.
+
+`grep pam_tid.so /etc/pam.d/sudo_local` (or `/etc/pam.d/sudo` on pre-Sonoma)
+Checks whether Touch ID is currently configured, and which method — checks `sudo_local` first.
+
+`sudo install -m 444 -o root -g wheel <tmpfile> /etc/pam.d/sudo_local`
+Writes the Touch ID PAM line with correct ownership and permissions. Used on macOS Sonoma (14) and later, where `sudo_local` survives OS updates that overwrite `/etc/pam.d/sudo` directly. On macOS 12–13, the script edits `/etc/pam.d/sudo` directly instead, after backing up the original file to `/etc/pam.d/sudo.sovereign-backup`.
+
+Disabling reverses whichever of the two methods was used, removing the `pam_tid.so` line and leaving password authentication as the only method again.
 
 ---
 
